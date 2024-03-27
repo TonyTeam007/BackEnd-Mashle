@@ -65,6 +65,7 @@ router.post("/:win/:Wscore/:lose/:Lscore/:winUserID/:loseUserID", (req, res) => 
 //ผลโหวต 7 วันล่าสุด
 router.get("/vote7day/:mid", async (req, res) => {
   const mid = +req.params.mid;
+  let userID: number;
   let name: string;
   let path: string;
   let scores: number[] = [];
@@ -85,8 +86,12 @@ router.get("/vote7day/:mid", async (req, res) => {
       );
     });
 
+    console.log(result);
+    
+
     let image: ImageResponse[] = result;
     if (i == 0) {
+      userID = image[0].userID;
       name = image[0].name;
       path = image[0].path;
     }
@@ -114,5 +119,14 @@ router.get("/vote7day/:mid", async (req, res) => {
     score: scores,
     date: date,
     upScore: upScore,
+  });
+});
+
+// id 38
+router.delete("/deleteVote/:id", (req, res) => {
+  let id = +req.params.id;
+  conn.query("delete from vote where imageID = ?", [id], (err, result) => {
+    if (err) throw err;
+    res.status(200).json({ affected_row: result.affectedRows });
   });
 });

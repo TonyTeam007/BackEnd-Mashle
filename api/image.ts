@@ -1,7 +1,8 @@
-import express from "express";
+import express, { query } from "express";
 import multer from "multer";
 import mysql from "mysql";
-import { conn } from "../app";
+import util from "util";
+import { conn, queryAsync } from "../app";
 import { storage } from "../firebaseconnection";
 import { deleteObject,ref } from "firebase/storage";
 import { uploadBytesResumable, getDownloadURL } from "firebase/storage";
@@ -65,7 +66,7 @@ router.post(
     console.log("File "+req.file);
     
     try {
-      // upload รูปภาพลง firebase โดยใช้ parameter ที่ส่งมาใน URL path
+      // upload รูปภาพลง firebase โดยใช้ parameter ที่ส่งมาใน URL pat
       const url = await firebaseUpload(req.file!);
       res.send("Image: " + url);
     } catch (error) {
@@ -115,25 +116,50 @@ router.post(
     const url = await getDownloadURL(snapshost.ref);
     let user: UploadPostRequest = req.body;
     let sql = "INSERT INTO `image`(`path`, `name`, `userID`, `score`) VALUES (?,?,?,?)";
-    sql = mysql.format(sql, [
-      url, 
-      user.name, 
-      user.userID,
-      user.score,
-    ]);
-    conn.query(sql, (err, result) => {
+    sql = mysql.format(sql, [url, user.name, user.userID ,user.score,]);
+    conn.query(sql, (err, resultImage) => {
       if (err) {
         res
           .status(409)
           .json({ affected_row: 0, last_idx: 0, result: err.sqlMessage });
       } else {
-        res.status(201).json({
-          affected_row: result.affectedRows,
-          last_idx: result.insertId,
-          result: url,
-        });
+        // เพิ่มคะแนนของรูปภาพให้มีค่าเริ่มค้นเท่ากัน 0
+        conn.query(
+          "INSERT INTO `vote`(`imageID`, `userID`, `vote`) VALUES (?,?,?)",
+          [resultImage.insertId, null, 0],
+          (err, result) => {
+            if (err) {
+              res.status(500).json({ affected_row: 0, result: err.sqlMessage });
+            } else {
+              res.status(201).json({
+                affected_row: result.affectedRows,
+                last_idx: resultImage.insertId,
+                result: url,
+              });
+            }
+          }
+        );
       }
     });
+    // sql = mysql.format(sql, [
+    //   url,
+    //   user.name,
+    //   user.userID,
+    //   user.score,
+    // ]);
+    // conn.query(sql, (err, result) => {
+    //   if (err) {
+    //     res
+    //       .status(409)
+    //       .json({ affected_row: 0, last_idx: 0, result: err.sqlMessage });
+    //   } else {
+    //     res.status(201).json({
+    //       affected_row: result.affectedRows,
+    //       last_idx: result.insertId,
+    //       result: url,
+    //     });
+    //   }
+    // });
   }
 );
 
@@ -214,7 +240,7 @@ router.delete("/delete/:id", fileUpload.diskLoader.single("file"), (req, res) =>
         if (result.length > 0) {
           const image: ImageResponse[] = result;
           // ลบรูปภาพออกจาก firebase
-          await firebaseDelete(image[0].path);        
+          await firebaseDelete(image[0].path);
           // ลบข้อมูลการโหวตของรูปภาพออกจาก database
           conn.query(
             "DELETE FROM `vote` WHERE imageID = ?",
@@ -248,6 +274,7 @@ router.delete("/delete/:id", fileUpload.diskLoader.single("file"), (req, res) =>
   );
 });
 
+
 // ลบรูปภาพใน firebase
 async function firebaseDelete(path: string) {
   const storageRef = ref(
@@ -274,6 +301,7 @@ router.get('/rank', async (req, res)=>{
     );
   });
   let today: ImageResponse[] = resultDay1;
+
 
   let resultDay2: any = await new Promise((resolve, reject) => {
     // ค้นหาอันดับรูปภาพทั้งหมดย้อนหลังตามจำนวนวันที่ต้องการ ด้วยวันย้อนหลังที่ i วัน
@@ -352,23 +380,91 @@ router.get('/getAllbyuserid/:id', async (req, res)=>{
   });
 });
 
-router.put("/Editname/:mid/:name", (req, res) => {
-  const mid = +req.params.mid;
-  const name = req.params.name;
-  conn.query(
-    "UPDATE `image` SET `name`= ? WHERE mid = ?", [name, mid],
-    (err, result) => {
-      if (err) {
-        res.status(500).json({
-          affectedRows: result.affectedRows,
-          result: err.sqlMessage,
-        });
-      } else {
-        res.status(200).json({
-          affectedRows: result.affectedRows,
-          result: "",
-        });
+router.put("/editImage/:id", async (req, res) => {
+  let id = +req.params.id;
+  console.log(id);
+  
+  let IncomeImage: ImageResponse = req.body;
+  // let jsonIncomeImage = JSON.stringify(IncomeImage);
+  // console.log("json : "+jsonIncomeImage);
+  // let EditImage: ImageResponse | undefined;
+  // // console.log("EditImage : "+EditImage);
+  
+  // // const queryAsync = util.promisify(conn.query).bind(conn);
+  // Promise
+  // await new Promiseconn.query(
+  //   "select * from image where mid = ?",
+  //   [id],
+  //   (err, result) => {
+  //     if (err) {
+  //       console.log(err);
+        
+  //     } else {
+  //       console.log(result[0]);
+  //     }
+  //   }
+  // );
+  let result: any = await new Promise((resolve, reject) => {
+    conn.query(
+      "select * from image where mid = ?",
+      [id],
+      (err, result) => {
+        if (err) {
+          reject(err);
+        } else {
+          resolve(result);
+        }
       }
-    }
-  );
+    );
+  });  
+  // queryAsync
+  // let result = await queryAsync(sql);
+  // console.log(result);
+  
+  // const rawData = JSON.parse(JSON.stringify(result));
+  let EditImage: ImageResponse = result[0];
+  // console.log(EditImage.path);
+  
+  // EditImage = rawData[0] as ImageResponse;
+
+  let updatePicture = { ...EditImage, ...IncomeImage };
+  // console.log("IncomeImage : "+IncomeImage.path);
+  // console.log("EditImage : "+EditImage.path);
+  
+  // let updatePictureString = JSON.stringify(updatePicture);
+  // // console.log(picture);
+  // // console.log("updatePictureString + "+updatePictureString);
+
+
+  let sql = "update `image` set `name`=?,`path`=?,`score`=? where `mid`=?";
+  sql = mysql.format(sql, [
+    updatePicture.name,
+    updatePicture.path,
+    updatePicture.score,
+    id,
+  ]);
+
+  conn.query(sql, (err, result) => {
+    if (err) throw err;
+    res.status(201).json({ affected_row: result.affectedRows });
+  });
 });
+
+router.post(
+  "/insertImagetoFirebase",
+  fileUpload.diskLoader.single("file"),
+  async (req, res) => {
+    console.log("File "+req.file);
+    
+    try {
+      // upload รูปภาพลง firebase โดยใช้ parameter ที่ส่งมาใน URL path
+      const url = await firebaseUpload(req.file!);
+      res.send("Image: " + url);
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      res.status(500).send("Failed to upload image");
+    }
+    
+  }
+);
+
