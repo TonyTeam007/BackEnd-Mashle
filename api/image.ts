@@ -1,8 +1,7 @@
 import express, { query } from "express";
 import multer from "multer";
 import mysql from "mysql";
-import util from "util";
-import { conn, queryAsync } from "../app";
+import { conn } from "../app";
 import { storage } from "../firebaseconnection";
 import { deleteObject,ref } from "firebase/storage";
 import { uploadBytesResumable, getDownloadURL } from "firebase/storage";
